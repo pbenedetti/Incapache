@@ -1,0 +1,65 @@
+INCAPACHE (Is Not Comparable to APACHE)
+N.B. il nome si legge "incapaci" ;-)
+
+Programma sviluppato a supporto del laboratorio di
+Sistemi di Elaborazione e Trasmissione del corso di laurea
+in Informatica classe L-31 presso l'Universita` degli Studi di
+Genova, anno accademico 2012/2013.
+
+Copyright (C) 2012 by Giovanni Chiola <chiolag@acm.org>
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+--------------------------------------
+
+Implementazione di un sottoinsieme del protocollo HTTP, nelle versioni
+1.0 e 1.1: la prima gestisce una sola richiesta per ogni connessione, mentre
+la seconda gestisce piu` richieste HTTP successive sulla stessa connessione
+in modalita` Pipeline lanciando in esecuzione piu` thread di risposta
+per velocizzare l'interazione col browser.
+
+Compilazione e installazione possono essere effettuate da shell a partire
+dalla directory "src" che contiene i sorgenti lanciando il comando:
+> make install
+
+Per l'installazione e` necessario avere i privilegi di amministrazione
+del sistema per poter rendere uno dei due eseguibili di tipo "set UID=0",
+quindi "make" lancia alcuni comandi con "sudo"; l'installazione si
+blocca in attesa che venga digitata la password di conferma.
+
+Questo serve per poter eseguire la chiamata di sistema chroot()
+e restringere i file che possono essere inviati al browser al
+solo contenuto della directory "www".
+Dopo aver eseguito tale chiamata, il processo ritorna in modalita`
+di esecuzione non privilegiata grazie alla system call setuid(UID)
+(dove il valore UID viene salvato dal processo "normale" e passato
+al processo privilegiato tramite argv e corrisponde all'utente che
+ha effettuato la login).
+In definitiva, quindi, il processo "incApache_chrooted" gira coi
+privilegi di root solo all'inizio (per eseguire correttamente la
+system call chroot), e poi ritorna ad avere i privilegi normali
+dell'utente, ma restando confinato nella directory "www".
+
+Vengono lanciati in esecuzione due processi per poter calcolare
+il "mime-type" da restituire nell'header della risposta.
+Questa informazione puo` essere generata lanciando da shell il
+comando:
+> file -i nomefile
+Un processo ottiene lo stesso risultato eseguendo la funzione
+int fd = popen("file -i nomefile","r") e leggendo dal file fd
+il risultato.
+Non sembra essere possibile tuttavia eseguire questa funzione
+dopo la chiamata di chroot() da parte di un processo "set UID=0".
+Il processo che ha eseguito la chroot() affida quindi il compito
+all'altro processo (non privilegiato) di eseguire la popen; i due
+processi si scambiano stringhe di caratteri usando due pipe.
+
+I due eseguibili vengono installati nella directory "src/../bin".
+Per lanciare il programma dopo averlo installato si puo` quindi
+digitare da shell:
+> cd ..
+> ./bin/incapache 8080 www
+

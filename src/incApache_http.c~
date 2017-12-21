@@ -1,0 +1,466 @@
+/*
+ * incApache_http.c: implementazione del protocollo HTTP per il web server
+ *                   del corso di SET
+ *
+ * versione 1.0 del 03/12/2012
+ *
+ * Programma sviluppato a supporto del laboratorio di
+ * Sistemi di Elaborazione e Trasmissione del corso di laurea
+ * in Informatica classe L-31 presso l'Universita` degli Studi di
+ * Genova, anno accademico 2012/2013.
+ *
+ * Copyright (C) 2012 by Giovanni Chiola <chiolag@acm.org>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
+
+/* 
+#define DEBUG
+*/
+
+#include "incApache.h"
+
+
+#define OptimizeTCP
+/*
+*/
+
+void send_response(int out_socket, int http_response,
+#ifdef HTTP_1_1
+                   int http10, int my_thrd_no,
+#endif
+                   char * filename, struct stat * stat_p) {
+
+    time_t now_t = time(NULL), fmod_t;
+    struct tm now_tm;
+    char my_time_string[MAXTIMESTR];
+    size_t my_sz;
+    char http_header[MAXHEADER];
+    int my_fd = -1;
+    unsigned long my_fsize = 0;
+    char * mime_type = NULL, * HTML_mime = "text/html";
+
+#ifdef DEBUG
+    printf("  ... start send_response(%3d,%s)\n",http_response,filename);
+#endif
+
+/*** TO BE DONE 1.0 START ***/
+
+    /*** Compute date of servicing current HTTP Request using gmtime() ***/
+
+    	strftime(my_time_string, MAXTIMESTR, "%a, %d %b %Y %H:%M:%S GMT", gmtime(&now_t));
+    	
+/*** TO BE DONE 1.0 END ***/
+
+#   define HTTP_PROTO_0 "HTTP/1.0 "
+#ifdef HTTP_1_1
+#   define HTTP_PROTO_1 "HTTP/1.1 "
+    if ( http10 )
+#endif
+        strcpy(http_header,HTTP_PROTO_0);
+#ifdef HTTP_1_1
+    else
+        strcpy(http_header,HTTP_PROTO_1);
+#endif
+
+    switch ( http_response ) {
+    case 200:
+        strcat(http_header,"200 OK");
+        if ( filename != NULL && stat_p != NULL &&
+             (my_fd = open(filename,O_RDONLY)) >= 0 ) {
+#ifdef DEBUG
+            printf("    ... send_response(%3d,%s): opened file %d\n",
+                   http_response,filename,my_fd);
+#endif
+            mime_type = get_mime_type(filename);
+            if ( mime_type == NULL )
+                mime_type = (char*)check_malloc((void*)strdup("unknown/unknown;"));
+
+/*** TO BE DONE 1.0 START ***/
+
+  		/*** compute my_fsize and fmod_t ***/
+
+		my_fsize = (unsigned long)(stat_p->st_size);
+		fmod_t=stat_p->st_mtime;
+            
+/*** TO BE DONE 1.0 END ***/
+
+        }
+        break;
+    case 304:
+        strcat(http_header,"304 Not Modified");
+        break;
+    case 400:
+        strcat(http_header,"400 Bad Request");
+        break;
+    case 404:
+        strcat(http_header,"404 Not Found");
+#       define ERROR_404 "404_Not_Found.html"
+        if ( (my_fd = open(ERROR_404,O_RDONLY)) >= 0 ) {
+
+/*** TO BE DONE 1.0 START ***/
+
+            /*** compute mime_type, my_fsize, and fmod_t ***/
+  
+		struct stat tmp;
+		if(access(ERROR_404,R_OK) != 0){
+
+		fail_errno("errore accesso file404:");		
+	}
+
+	(void)stat(ERROR_404,&tmp);
+	
+	my_fsize = (unsigned long)(tmp.st_size);
+	
+	mime_type = (char*)check_malloc(malloc(strlen(HTML_mime)));
+	strcpy(mime_type,HTML_mime);
+	
+	fmod_t = tmp.st_mtime;
+	
+            
+            
+/*** TO BE DONE 1.0 END ***/
+
+        }
+        break;
+    default:
+        strcat(http_header,"501 Method Not Implemented\r\nAllow: HEAD,GET");
+#       define ERROR_501 "501_Method_Not_Implemented.html"
+        if ( (my_fd = open(ERROR_501,O_RDONLY)) >= 0 ) {
+
+/*** TO BE DONE 1.0 START ***/
+
+            /*** compute mime_type, my_fsize, and fmod_t ***/
+		struct stat tmp;
+
+			if(access(ERROR_501,R_OK) != 0){
+
+				fail_errno("errore accesso file 501:");		
+			}
+
+		(void)stat(ERROR_501,&tmp);
+		my_fsize = (unsigned long)(tmp.st_size);
+		mime_type = (char*)check_malloc(malloc(strlen(HTML_mime)));
+		strcpy(mime_type,HTML_mime);
+		fmod_t = tmp.st_mtime;
+
+/*** TO BE DONE 1.0 END ***/
+
+        }
+        break;
+    }
+    strcat(http_header,"\r\nDate: ");
+    strcat(http_header,my_time_string);
+#ifdef HTTP_1_1
+    strcat(http_header,"\r\nServer: incApache/1.1 (SET 2012/2013)\r\n");
+    if ( http_response == 501 || http10 )
+#else
+    strcat(http_header,"\r\nServer: incApache/1.0 (SET 2012/2013)\r\n");
+#endif
+        strcat(http_header,"Connection: close\r\n");
+    if ( my_fsize > 0 && mime_type != NULL ) {
+        char lll[50];
+        sprintf(lll,"%lu",my_fsize);
+        strcat(http_header,"Content-Length: ");
+        strcat(http_header,lll);
+        strcat(http_header,"\r\nContent-Type: ");
+        strcat(http_header,mime_type);
+        strcat(http_header,"\r\nLast-Modified: ");
+
+/*** TO BE DONE 1.0 START ***/
+
+        /*** compute my_time_string ***/
+
+        strftime(my_time_string, MAXTIMESTR, "%a, %d %b %Y %H:%M:%S GMT", localtime(&fmod_t));
+        
+/*** TO BE DONE 1.0 END ***/
+
+        strcat(http_header,my_time_string);
+        strcat(http_header,"\r\n");
+    }
+    strcat(http_header,"\r\n");
+
+#ifdef DEBUG
+    printf("      ... send_response(%3d,%s) : header prepared\n%s",
+           http_response,filename,http_header);
+
+
+#else
+    printf("Sending the following response:\n%s\n",http_header);
+#endif
+    my_sz = strlen(http_header);
+
+#ifdef HTTP_1_1
+
+    join_prev_thread(my_thrd_no);
+#endif
+
+printf("header stampa: %s\n",http_header);
+#ifdef OptimizeTCP
+    if ( send(out_socket,(void*)http_header,my_sz,MSG_MORE) < my_sz )
+#else
+    if ( send(out_socket,(void*)http_header,my_sz,0) < my_sz )
+#endif
+        fail_errno("incApache: could not send HTTP header");
+#ifdef DEBUG
+    printf("      ... send_response(%3d,%s) : header sent\n",http_response,filename);
+#endif
+    if ( my_fd >= 0 ) {
+
+/*** TO BE DONE 1.0 START ***/
+
+        /*** execute sendfile() ***/
+
+        if(sendfile(out_socket, my_fd, NULL, my_fsize) < my_fsize ){
+		
+		 fail_errno("incApache: could not send file");
+	
+	}
+        
+/*** TO BE DONE 1.0 END ***/
+
+    }
+#ifdef OptimizeTCP
+    int optval = 1;
+    setsockopt(out_socket,IPPROTO_TCP,TCP_NODELAY,(void*)&optval,sizeof(int));
+#endif
+    if ( mime_type != NULL )
+        free((void*)mime_type);
+#ifdef DEBUG
+    printf("  ... end send_response(%3d,%s)\n",http_response,filename);
+#endif
+}
+
+
+void manage_http_requests( int my_socket
+#ifdef HTTP_1_1
+                         , int my_conn_no
+#endif
+                         ) {
+    FILE * mystream = fdopen(my_socket,"r");
+
+    char * http_request_line = NULL;
+    char * strtokr_save;
+    size_t n;
+    time_t tmp1;
+
+#define METHOD_NONE		0
+#define METHOD_HEAD		1
+#define METHOD_GET		2
+#define METHOD_CONDITIONAL	4
+#define METHOD_NOTCHANGED	8
+#define MethodIsConditional(m) ((m)&METHOD_CONDITIONAL)
+    int my_method;
+    struct tm since_tm;
+    struct stat * stat_p = NULL;
+    int my_fd;
+
+#ifdef HTTP_1_1
+    int http10 = 0;
+    int my_thrd;
+#endif
+
+    while ( getline(&http_request_line,&n,mystream) >= 0 ) {
+      char * method_str, * filename, * protocol;
+      char * http_option_line = NULL;
+      char * option_name, * option_val;
+     
+	
+        printf("\n-----------------------------------------------\n");
+	printf("Received the following request:\n");
+        printf("%s",http_request_line);
+#ifdef HTTP_1_1
+        my_thrd = get_new_thread(my_conn_no);
+#endif
+
+/*** TO BE DONE 1.0 START ***/
+
+        /*** compute method_str, filename, and protocol ***/
+
+        method_str=strtok_r(http_request_line," ",&strtokr_save);
+	filename=strtok_r(NULL," ",&strtokr_save);
+	protocol=strtok_r(NULL,"\r\n",&strtokr_save);
+        
+/*** TO BE DONE 1.0 END ***/
+
+        if ( method_str == NULL || filename == NULL || protocol == NULL ||
+             filename[0] != '/' || strncmp(protocol,"HTTP/1.",7) != 0 ||
+             strlen(protocol) != 8  ) {
+#ifdef DEBUG
+            printf("       ... Bad Request!\n");
+#endif
+#ifdef HTTP_1_1
+            send_resp_thread(my_socket,400, /*** Bad Request ***/
+                             1,my_conn_no,my_thrd,
+                             NULL,NULL);
+#else
+            send_response(my_socket,400, /*** Bad Request ***/
+                          NULL,NULL);
+#endif
+            free((void*)http_request_line);
+            break;
+        }
+#ifdef HTTP_1_1
+        http10 = ! strcmp(protocol,"HTTP/1.0");
+#endif
+        
+        (void)memset((void*)&since_tm,0,sizeof(struct tm));
+        my_method = METHOD_NONE;
+        if ( strcmp(method_str,"GET") == 0 )
+            my_method = METHOD_GET;
+    
+        else if ( strcmp(method_str,"HEAD") == 0 )
+            my_method = METHOD_HEAD;
+    
+#ifdef DEBUG
+        printf("     ... my_method=%1d\n",my_method);
+#endif
+
+        for( http_option_line = NULL ;
+             getline(&http_option_line,&n,mystream) >= 0 &&
+                                 strcmp(http_option_line,"\r\n") != 0 ;
+             free((void*)http_option_line), http_option_line = NULL ) {
+             printf("%s",http_option_line);
+            if ( ! MethodIsConditional(my_method) ) {
+
+// /*** TO BE DONE 1.0 START ***/
+/*** recognize "If-Modified-Since: ... " optional header and compute since_tm ***/
+
+		if(strcmp(strtok_r(http_option_line," ",&strtokr_save), "If-Modified-Since:") == 0) {
+		
+			char * date = strtok_r(NULL,"\r\n",&strtokr_save);
+
+				if (strptime(date, "%a, %d %b %Y %H:%M:%S GMT", &since_tm) == NULL) {
+											
+					printf("Invalid time format\n");
+					break;
+				}
+			my_method |= METHOD_CONDITIONAL;
+			tmp1=mktime(&since_tm);
+		}
+
+				          
+/*** TO BE DONE 1.0 END ***/
+
+	}
+      }
+
+       
+          
+        if ( http_option_line != NULL )
+            free((void*)http_option_line);
+
+        if ( my_method == METHOD_NONE ) {
+            printf("method not implemented\n");
+            
+#ifdef HTTP_1_1
+            send_resp_thread(my_socket,501,
+                             1,my_conn_no,my_thrd,
+                             method_str,NULL);
+#else
+            send_response(my_socket,501,
+                          method_str,NULL);
+#endif
+            break;
+        }
+
+        printf("\n-----------------------------------------------\n");
+        
+        if ( strcmp(filename,"/") == 0 )
+      
+      filename = "index.html";
+        else
+            filename += 1; /* remove leading '/' */
+#ifdef DEBUG
+        printf("my_method=%d, filename=%s\n",my_method,filename);
+#endif
+        stat_p = (struct stat*)check_malloc(malloc(sizeof(struct stat)));
+        if ( access(filename,R_OK) != 0 || stat(filename,stat_p) < 0 ) {
+#ifdef DEBUG
+            printf("    ... file %s not found!\n",filename);
+#endif
+#ifdef HTTP_1_1
+            send_resp_thread(my_socket,404, /*** Not Found ***/
+                             http10,my_conn_no,my_thrd,
+                             filename,NULL);
+#else
+            send_response(my_socket,404, /*** Not Found ***/
+                          filename,NULL);
+#endif
+              free((void*)stat_p);
+        } else {
+            if ( MethodIsConditional(my_method) ) {
+
+/*** TO BE DONE 1.0 START ***/
+/*** compare since_tm against file last modification time and 
+possibly transform Conditional HEAD/GET into METHOD_NOTCHANGED***/
+         	
+		if( access(filename,R_OK) != 0 || stat(filename,stat_p) < 0){
+			printf(".......file %s not found\n",filename);
+		}
+		else{
+			if( difftime(tmp1,stat_p->st_mtime) == 0){
+				my_method=METHOD_NOTCHANGED;
+			}
+		}    
+                      
+/*** TO BE DONE 1.0 END ***/
+
+            }
+            switch ( my_method ) {
+            case METHOD_HEAD :
+#ifdef DEBUG
+              printf("    ... sending header for file %s\n",filename);
+#endif
+#ifdef HTTP_1_1
+              send_resp_thread(my_socket,200, /*** OK, without body ***/
+                               http10,my_conn_no,my_thrd,
+                               NULL,stat_p);
+#else
+              send_response(my_socket,200, /*** OK, without body ***/
+                            NULL,stat_p);
+#endif
+              break;
+            case METHOD_NOTCHANGED :
+#ifdef DEBUG
+              printf("    ... file %s not modified\n",filename);
+#endif
+#ifdef HTTP_1_1
+              send_resp_thread(my_socket,304, /*** Not Modified, without body ***/
+                               http10,my_conn_no,my_thrd,
+                               NULL,NULL);
+#else
+              send_response(my_socket,304, /*** Not Modified, without body ***/
+                            NULL,NULL);
+#endif
+                free((void*)stat_p);
+              break;
+            case METHOD_GET :
+#ifdef DEBUG
+              printf("    ... sending file %s\n",filename);
+#endif
+#ifdef HTTP_1_1
+              send_resp_thread(my_socket,200, /*** OK, with body ***/
+                               http10,my_conn_no,my_thrd,
+                               filename,stat_p);
+#else
+              send_response(my_socket,200, /*** OK, with body ***/
+                            filename,stat_p);
+#endif
+              break;
+            }
+        }
+#ifdef HTTP_1_1
+        if ( http10 )
+#endif
+            break;
+    }
+#ifdef HTTP_1_1
+    join_all_threads(my_conn_no);
+#endif
+    close(my_socket);
+}
+
